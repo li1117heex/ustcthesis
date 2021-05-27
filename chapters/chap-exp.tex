@@ -1,0 +1,182 @@
+\chapter{实验}
+
+\section{对Poolingformer模型的实验}
+
+对于Poolingformer，本文在长文本摘要任务上用arXiv、PubMed\cite{cohan2018discourse}两个数据集测试了模型的效果，并进行了一系列消融实验，证明了双层注意力机制的有效性并寻找最佳参数。
+
+\subsection{数据集：arXiv与PubMed}
+
+\begin{table}[h]
+\caption{arXiv与PubMed数据集的相关数据}
+\label{table.sum_data}
+\begin{center}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lccccccc}
+\toprule
+\multicolumn{1}{l}{} & \multicolumn{3}{c}{数据集大小（条）} & \multicolumn{2}{c}{输入长度} & \multicolumn{2}{c}{输出长度} \\ 
+数据集 & 训练集 & 测试集 & 开发集 & 中位数 & 90分位数  & 中位数 & 90分位数 \\ \midrule
+arXiv & 203037 & 6436 & 6440 & 6151 & 14405 & 171 & 352\\
+PubMed & 119924 & 6633 & 6658 & 2715 & 6101 & 212 & 318 \\\bottomrule[1.5pt]
+\end{tabular}
+}
+\end{center}
+\end{table}
+
+arXiv的数据由一个各学科的论文预印本收集网站arxiv.org上的论文收集、整理而来\cite{cohan2018discourse}，模型需要由输入的论文正文生成论文的摘要，完成摘要任务。该数据集的文本长度较长（见\autoref{table.sum_data}），最满足期望的测试场景。
+
+与arXiv类似，PubMed数据集中模型同样需要由论文的正文生成论文的摘要，而其数据来自于生命科学与医学领域的数据库及搜索引擎pubmed.ncbi.nlm.nih.gov。该数据库包含了十万余篇生物医学方面的论文。
+
+和之前的工作一致，本文使用ROUGE分数\cite{lin2004rouge}作为衡量生成摘要与参考摘要文本相似程度的标准。ROUGE分数中本实验选用了ROUGE-1，ROUGE-2，ROUGE-L三个分数，能以句子为单位衡量文本之间单词、词组与最长公共子序列的相似程度。
+
+\subsection{实验细节与参数设置}
+
+因为摘要任务需要生成文本，本实验的模型采用了Encoder-Decoder架构，编码器和解码器各有12层。由于摘要任务的输出文本并不长，所以仅编码器应用了Poolingformer的双层注意力机制，而在解码器的所有层中仍保留完全自注意力机制，来最好的优化输出文本。从头开始训练一个Transformer模型往往并不划算，需要消耗极大量的时间与算力，加载一个经过了很好调优，且结构差不多的预训练模型，是通用的做法。与之前的一些工作\cite{beltagy2020longformer}类似，本实验加载了BART\cite{lewis2019bart}的预训练参数，这样就可以最公平地对比实验结果。由于序列最大长度大大增加，BART的位置编码也必须扩展。实验选择了和Longformer相同的做法，将BART的位置编码循环拷贝，得到了更长的位置编码。
+
+对于12层的编码器，也不是所有层的注意力计算都完全一样。第六到第十一层，也就是后6层采用了双层的注意力机制，而其余层则只计算其第一层注意力，即滑动窗口注意力。这是因为相对遥远的信息对靠后的层更加有价值。序列的第一个token将作为全局 token，这也和前人的工作一致。
+
+第一层和第二层注意力的接收窗口长度分别为128和512，池化的核大小与步长分别为5和4。嵌入长度$d$为1024，分为16个多头注意力的头。输入序列的最大长度为4096或16384，而输出序列的最大长度为256。池化运算选择了卷积。在生成输出文本时，beam的个数为5，而length penalty（控制生成的文本长度）设置为2，no repeat ngram（控制能重复出现的子序列，即词组的最大长度）设为0。
+
+\subsection{实验结果}
+
+\begin{table}[ht]
+\caption{ 相关模型在arXiv测试集上的结果。 }
+\label{table.arxivResult}
+\begin{center}
+\resizebox{0.75\linewidth}{!}{
+\begin{tabular}{@{}lccc@{}}
+\toprule
+模型  & ROUGE-1 & ROUGE-2 & ROUGE-L \\ \hline
+Sent-PTR~\cite{subramanian2019extractive} &  42.32 & 15.63 & 38.06 \\
+Extr-Abst-TLM~\cite{subramanian2019extractive}  &  41.62 & 14.69 & 38.03  \\
+PEGASUS~\cite{zhang2020pegasus} & 44.21 & 16.95 & 38.83  \\
+Dancer~\cite{gidiotis2020divide} & 45.01 & 17.60 & 40.56  \\
+\hline
+BigBird~\cite{zaheer2020big} & 46.63 & 19.02 & 41.77  \\
+LED$_{4k}$~\cite{beltagy2020longformer} & 44.40 & 17.94 & 39.76  \\
+LED$_{16k}$~\cite{beltagy2020longformer} & 46.63 & 19.62 & 41.83  \\
+\hline
+Poolingformer$_{4k}$ & 47.86 & 19.54 & 42.35 \\
+Poolingformer$_{16k}$ & \textbf{48.47} & \textbf{20.23} & \textbf{42.69} \\
+\bottomrule
+\end{tabular}
+}
+\end{center}
+\end{table}
+
+在加载了BART的预训练参数之后，Poolingformer模型在arXiv训练集上分别以4096、16384的最大序列长度精调。在PubMed训练集上只进行了最大序列长度4096的精调，这是因为PubMed的输入长度相对没有那么长。精调的batch size为128，以2e-4（最大序列长度4096）或1e-4（最大序列长度16384）的学习率在10个epoch中选择开发集上最优的模型，warmup step 为1000。学习率调度器为Adam\cite{kingma2014adam}，且学习率以线性方式衰减。
+
+\autoref{table.arxivResult}展示了各模型在arXiv测试集上的结果。最上面的3行是一些过去的SoTA模型，这些模型有些通过从正文中选择句子来组合成摘要，也有些是基于Transformers的生成模型，但能一次处理的文本长度都不长，最大也就是PEGASUS\cite{zhang2020pegasus}，为1024。
+
+表格下方展示了BigBird，LED，与Poolingformer模型的结果。这三个模型都基于Transformer，且都采用了滑动窗口的全局的稀疏自注意力机制。但是，BigBird与LED都只有单层自注意力，而BigBird还额外随机选择了一些除此之外的token对计算注意力。BigBird加载了PEGASUS的预训练参数，并且在精调之前还进行了一段延长预训练。况且，PEGASUS还是专门针对摘要任务设计的模型。LED，即Longformer Encoder-Decoder与Poolingformer都从BART的预训练参数加载，而且都没有进行延长预训练。BigBird实验的最大序列长度为3072。从表中可以看出，Poolingformer$_{16k}$的结果大幅超过了已有结果，成为了新的SOTA。在同样的序列长度下比较，无论4096还是16384，Poolingformer都远远超过了LED；即便是Poolingformer$_{4k}$都在两项分数上超过了LED$_{4k}$。
+
+\begin{table}[ht]
+\caption{ 相关模型在PubMed测试集上的结果。}
+\label{table.pubmedResult}
+\begin{center}
+\resizebox{0.75\linewidth}{!}{
+\begin{tabular}{@{}lccc@{}}
+\toprule
+模型  & ROUGE-1 & ROUGE-2 & ROUGE-L \\ \hline
+Sent-PTR~\cite{subramanian2019extractive} &  43.30 & 17.92 & 39.47 \\
+Extr-Abst-TLM~\cite{subramanian2019extractive}  &  42.13 & 16.27 & 39.21  \\
+PEGASUS~\cite{zhang2020pegasus} & 45.97 & 20.15 & 41.34  \\
+Dancer~\cite{gidiotis2020divide} & 46.34 & 19.97 & \textbf{42.42}  \\
+\hline
+BigBird~\cite{zaheer2020big} & 46.32 & 20.65 & 42.33  \\
+\hline
+Poolingformer$_{4k}$ & \textbf{46.72} & \textbf{20.86} & 42.00 \\
+\bottomrule
+\end{tabular}
+}
+\end{center}
+\end{table}
+
+\autoref{table.pubmedResult}展示了各模型在PubMed的测试集上的结果。Longformer没有报告PubMed上的结果。Poolingformer$_{4k}$在ROUGE-1和ROUGE-2两项分数上超过了现有同期最佳，在ROUGE-L上则没有超过。Poolingformer没有能全面刷新最好结果，这可能是因为PubMed的输入长度相对arXiv没有那么长。但这也已经足够说明Poolingformer的在长文本摘要任务上的能力。
+
+除了测试结果以外，在计算资源消耗上，Poolingformer的双层注意力机制也优于BigBird与LED的单层注意力。虽然多了一层注意力计算，但在双层注意力机制下，第一层注意力的接收窗口可以显著缩短。LED的（单侧）窗口长度为512，这意味着其复杂度为$O(1024 \times n)$。而Poolingformer的一二级窗口长度分别为128和512，其复杂度为$O((256+1024/4)\times n)$。在最大窗口长度同为512的情况下，Poolingformer的复杂度只有LED的一半。无论是复杂度还是任务指标，Poolingformer都超过了现有模型，这正说明了双层注意力机制高效利用信息的能力。
+
+\subsection{相关消融实验}
+
+本节通过两组消融实验证明了池化注意力机制的合理性，并探究了窗口长度与池化运算的设置。为了节约计算资源，所有消融实验都使用编码器和解码器都是6层的Poolingformer模型，称之为Poolingformer$_{base}$，并从模型形状参数相同的BART$_{base}$加载预训练参数。除此之外，精调所使用的训练数据为从arXiv训练集中选择的50000条数据，约占其原有规模的四分之一。Poolingformer$_{base}$的嵌入长度$d=768$，含有12个头。输入序列的最大长度为4096。池化的核大小与步长分别为5和4。在生成输出文本时，beam的个数为5，而length penalty（控制生成的文本长度）设置为1，no repeat ngram（控制能重复出现的子序列，即词组的最大长度）设为3。学习率设为1e-4。第3到第5层，也就是后3层采用了双层的注意力机制，而其余层则只计算其第一层注意力。
+
+\begin{table}[ht]
+\caption{Poolingformer$_{base}$在arXiv测试集上关于第一、第二层注意力窗口长度$w_1$、$w_2$的消融实验结果。}
+\label{table.ablationWindowSize}
+\begin{center}
+\resizebox{0.75\linewidth}{!}{
+\begin{tabular}{cccccc}
+\toprule[1.5pt]
+模型 & $w_1$ & $w_2$ & ROUGE-1 & ROUGE-2 & ROUGE-L \\ \hline
+poolingFormer$_{base}$ & 128 & - & 38.27 & 14.39 & 33.72 \\ 
+poolingFormer$_{base}$ & 256 & - & 38.54 & 14.43 & 33.89 \\ 
+poolingFormer$_{base}$ & 512 & - & 38.08 & 14.38 & 33.61 \\ \hline
+poolingFormer$_{base}$ & 128 & 256 & 38.39 & 14.34 & 33.67 \\ 
+poolingFormer$_{base}$ & 128 & 512 & 38.75 & 14.58 & 34.13 \\ \bottomrule[1.5pt]
+\end{tabular}
+}
+\end{center}
+\end{table}
+
+第一组消融实验探究了第一层与第二层注意力窗口长度的影响，采用卷积作为池化运算，结果展示于\autoref{table.ablationWindowSize}中。在前面三行的实验中，$w_2$一列留空，这三组实验完全没有计算第二层注意力，即所有层都只计算第一层的滑动窗口注意力。在后面两个实验中，第3到第5层，也就是后3层采用了双层的注意力机制，而其余层则只计算其第一层注意力。为了探究第二层池化注意力计算的有效性，可以选取各自的最优结果，前者为第二行，后者为第五行进行比较，可见后者优于前者。而且后者的窗口长度等效于 $128+512/4=256$，两者的计算开销几乎相同。这一比较说明了第二层注意力是有效的。
+
+在这几组实验参数中，$128+512$的窗口长度设置表现最好，因此主实验也采用了该窗口长度。
+
+有趣的是，在第三行与第二行的对比中，将窗口长度从256增加到512反而导致结果出现了一个相对明显的下降。从常理来说，增大了接受窗口使token可以参考更多的信息，本应提高模型的表现。但实验结果告诉我们，256的窗口长度下模型表现优于128或512的窗口长度。这也许说明，距离超过一定长度之后，与更远的token计算注意力不会带来新的信息，反而更像是干扰或一种噪声。这一点值得进行更加深入与细致的研究探讨。
+
+\begin{table}[ht]
+\caption{Poolingformer$_{base}$在arXiv测试集上关于池化方式的消融实验结果。}
+\label{table.ablationPooling}
+\begin{center}
+\resizebox{0.75\linewidth}{!}{
+\begin{tabular}{ccccc}
+\toprule[1.5pt]
+模型 & 池化方式 & ROUGE-1 & ROUGE-2 & ROUGE-L \\ \hline
+poolingFormer$_{base}$ & 卷积 & 38.75 & 14.58 & 34.13 \\ 
+poolingFormer$_{base}$ & 均值 & 38.68 & 14.60 & 34.05 \\ 
+poolingFormer$_{base}$ & 最大值 & 38.42 & 14.45 & 33.84 \\ \bottomrule[1.5pt]
+\end{tabular}
+}
+\end{center}
+\end{table}
+
+第二组消融实验中后3层采用了双层的注意力机制，而分别采用了不同的池化方式，以研究池化对模型的影响，其结果见\autoref{table.ablationPooling}。对比均值、最大值、卷积三种池化方式，在两项分数上卷积池化取得了第一名，而在ROUGE-2上是均值池化取得了最好结果。从分数来看，卷积池化与均值池化差异很小。最终，主实验采用了卷积池化的方式进行实验。
+
+\section{融合模型的对比实验}
+
+为了能将Poolingformer与Deberta的融合模型与Poolingformer进行对比，必须让这两个模型在相同的数据集上，以相同的设置完成相同的任务。由于Deberta并未被设计用于摘要这类要求生成文本的任务，所以用摘要任务来进行对比实验不可行。实验采用在Natural Questions数据集上的问答任务对两个模型进行比较。
+
+\subsection{数据集：Natural Questions}
+
+作为问答数据集，Natural Questions（简称NQ）的问题来自于谷歌搜索引擎的真实问题，而每篇对应的文档则是维基百科的一个词条。模型需要从文档里找到
+1长答案 包含回答的段落
+2短答案 答案的具体范围
+文档也有可能不包含答案，模型也要能识别这种情况。由于NQ的测试集的label不公开，本实验在NQ的开发集上进行测试，并汇报长答案与短答案的F1分数。
+
+与之前的工作\cite{alberti2019bert}类似，一篇文档会被通过滑动窗口的方式分割成多个片段。分割后片段长为4096，而步长为1568。而每一个样本，即每一次输入模型的数据不是一篇完整的文档，而是包含文档的一个片段，以及放置在开头的问题文本。由于答案只有一个，大部分文档片段不包含答案，所以如此分割必然使不包含答案的负样本较大程度地多于正样本，造成样本不均衡问题。和\cite{liu2020rikinet}一样，实验对负样本进行了下采样以减少其数量，比例为0.5。得到输出序列后，用分类器预测每一个token是否为短答案的起始/结束token。属同一个段落的token会经过均值池化得到这个段落的表示，用于预测此段落是否为长答案。所有段落的段落表示经过再一次的均值池化后得到的是这个文档片段的表征，并用以预测该片段有无答案。
+
+\subsection{实验细节，参数与结果}
+
+问答任务属于自然语言理解任务，不需要生成文本，所以只有编码器没有解码器。两个模型都采用了24层编码器，嵌入长度为1024，分为16个头，其中第15到第20层计算层采用了双层的注意力机制，而其余层则只计算其第一层注意力。第一层和第二层注意力的接收窗口长度分别为128和512，池化的核大小与步长分别为5和4。因为是问答任务，问题token非常重要，所以实验将所有的问题token作为全局 token集。
+
+两个模型都从一个优秀的预训练模型上初始化，然后进行精调训练是省时省力的做法，但这也要求预训练模型满足对比实验的限制，比如模型大小一致。然而，最适合的预训练模型Deberta与Roberta\cite{liu2019roberta}之间存在诸多规格上的差异。同为24层的预训练模型，Deberta的嵌入长度为1536而Roberta为1024，这种差异会给模型的对比带来干扰。而融合模型如果也从Roberta加载预训练参数的话，相对位置编码矩阵P无法加载且两种模型之间位置编码方式差异过大，会使得融合模型的实验结果大幅度下降。最终，实验选择了对两种模型都自己进行预训练，这样就不再受到预训练模型形状参数的限制。预训练采用的语料为英文Wikipedia，被很多预训练模型，包括BERT\cite{devlin2018bert}、RoBERTa\cite{liu2019roberta}所采用，大小为18G。预训练的任务为广泛使用的MaskedLM\cite{devlin2018bert}，即掩码语言模型，随机遮住一部分token再通过上下文预测它们，类似于完形填空。预训练的batch size为128，以1e-4的学习率训练了4个epoch。预训练在八块NVIDIA Tesla V100 GPU上进行了约一星期的时间，虽然比Roberta之类的优秀预训练模型相比训练量少了很多，但也足以对两个模型进行初步比较了。
+
+精调的batch size为32，以3e-5的学习率训练了2个epoch，warmup 阶段占训练的比例为0.1。学习率调度器为Adam\cite{kingma2014adam}，且学习率以多项式方式衰减。
+
+\begin{table}[ht]
+\caption{经过预训练与精调之后，Poolingformer与融合模型在NQ测试集上的结果。包括长答案（LA）与短答案（SA）的精确率（P），召回率（R），与F1分数。}
+\label{table.NQMainResult}
+\begin{center}
+\resizebox{0.8\linewidth}{!}{
+\begin{tabular}{lcccccc}
+\toprule[1.5pt]
+\multicolumn{1}{l}{} & \multicolumn{3}{c}{LA} & \multicolumn{3}{c}{SA}\\ 
+ & P & R & F1 & P & R & F1 \\
+ \midrule
+Poolingformer & 62.3 & 64.8 & 63.5 & 48.7 & 36.6 & 41.7 \\
+融合模型 & 65.4 & 66.8 & 66.1 & 50.1 & 42.3 & 45.9 \\ \bottomrule[1.5pt]
+\end{tabular}
+}
+\end{center}
+\end{table}
+
+\autoref{table.NQMainResult}中展示了两个模型在预训练并且精调之后在NQ测试集上的结果。融合模型结果优于Poolingformer，虽然出于计算资源所限，不能进行更大训练量的预训练，但这也部分说明了融合模型有其优点。

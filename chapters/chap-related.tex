@@ -1,0 +1,37 @@
+\chapter{相关工作}
+
+\begin{table}[b]
+\caption{部分相关模型的复杂度}
+\label{table.complexity}
+\begin{center}
+\resizebox{.6\linewidth}{!}{
+\begin{tabular}{@{}lc@{}}
+\toprule
+模型 & 复杂度 \\  \midrule
+Transformer~\cite{vaswani2017attention} & $\mathcal{O}(n^2)$ \\
+\hline
+Synthesizer~\cite{tay2020synthesizer} & $\mathcal{O}(n^2)$ \\
+Performer~\cite{choromanski2020rethinking} & $\mathcal{O}(n)$ \\
+Linformer~\cite{wang2020linformer} & $\mathcal{O}(n)$ \\
+\hline
+Reformer~\cite{kitaev2020reformer} &  $\mathcal{O}(n \log n)$\\
+Routing Transformer~\cite{roy2021efficient}  &  $\mathcal{O}(n \log n)$\\
+Cluster-Former~\cite{wang2020cluster} & $\mathcal{O}(n \log n)$ \\ 
+\hline
+Longformer~\cite{beltagy2020longformer} &   $\mathcal{O}(n)$ \\
+BigBird~\cite{zaheer2020big} &  $\mathcal{O}(n)$ \\
+Compressed Attention~\cite{liu2018generating} & $\mathcal{O}(n^2)$ \\
+\hline
+Poolingformer & $\mathcal{O}(n)$\\\bottomrule
+\end{tabular}
+}
+\end{center}
+\end{table}
+
+为了解决Transformers的完全自注意力机制的$\mathcal{O}(n^2)$在面对长文本任务时计算开销过大的问题，除了一些利用递归、循环的方式进行单向语言建模的模型之外，大致可以分为三大类，其计算复杂度对比见\autoref{table.complexity}。
+
+第一类模型的特点是利用低秩逼近或核函数等方式来对自注意力计算进行近似。Synthesizer\cite{tay2020synthesizer}直接通过训练参数的方式由输入序列得到了注意力分数，因此能跳过两两计算点积的步骤。Performer\cite{choromanski2020rethinking}利用核函数的方式在减少计算量的情况下对两两计算注意力进行近似。Linformer\cite{wang2020linformer}则是基于低秩逼近的思想，通过映射降低了key、value序列的长度。
+
+第二类与第三类模型的共同点是不再让token两两之间都计算注意力，而是只挑选出一部分进行注意力计算。在第二类模型中，注意力计算模式，即哪个token要和哪些token计算注意力是由数据决定的。通常来说，第二类模型会通过一种相似性判断，将token分类进入不同的桶中，而只对同一个桶中的token计算注意力为主，或者再加入一些其他的注意力计算模式。Reformer\cite{kitaev2020reformer} 参考了局部敏感哈希作为判断标准，而Routing Transformer\cite{roy2021efficient}和Cluster-Former\cite{wang2020cluster}则将k-means聚类算法纳入相似性判断中。
+
+第三类模型中的注意力计算模式是由模型所确定的，Poolingformer便归于此类。最简单的模式便是分块计算注意力，token之和同块内的token计算，比如Blockwise\cite{qiu2019blockwise} 。又或者与Poolingformer类似，在token的局部窗口内计算注意力，辅以全局或随机注意力，包括前面多次提到的Bigbird\cite{zaheer2020big}与Longformer\cite{beltagy2020longformer}。除此之外，还有模型着眼于减少序列的长度，比如Compressed Attention\cite{liu2018generating}用跨步卷积的方式实现了这一目标。\textcolor{white}{\cite{zhang2021poolingformer}}
